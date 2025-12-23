@@ -1,0 +1,8 @@
+{
+  "name": "Adhi - Your Trusted AI Companion",
+  "description": "A deeply empathetic, ultra-genius personal AI advisor designed to provide unconditional support, wisdom, and genuine connection.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
