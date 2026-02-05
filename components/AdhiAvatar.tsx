@@ -33,8 +33,30 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const [speechCycle, setSpeechCycle] = useState(0);
+  const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
 
   const isAnalytical = visionStatus === 'active' || visionStatus === 'sensing';
+
+  // Natural gaze shifts
+  useEffect(() => {
+    let timeoutId: number;
+    const shiftGaze = () => {
+      // Intensely listening or speaking = more stable gaze
+      // Processing/Typing = more rapid shifts
+      const magnitude = isTyping ? 1.5 : (isSpeaking || isListening) ? 0.3 : 0.8;
+      
+      setEyeOffset({
+        x: (Math.random() - 0.5) * magnitude,
+        y: (Math.random() - 0.5) * magnitude
+      });
+
+      const nextDelay = isTyping ? 800 + Math.random() * 1200 : 2500 + Math.random() * 5000;
+      timeoutId = window.setTimeout(shiftGaze, nextDelay);
+    };
+    
+    timeoutId = window.setTimeout(shiftGaze, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [isTyping, isSpeaking, isListening]);
 
   // Natural speech-sync mouth animation
   useEffect(() => {
@@ -200,6 +222,9 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
           .mouth-transition {
             transition: d 0.1s cubic-bezier(0.4, 0, 0.2, 1);
           }
+          .eye-gaze-transition {
+            transition: cx 0.4s ease-out, cy 0.4s ease-out;
+          }
         `}</style>
 
         {/* Sensory Link Glows */}
@@ -221,11 +246,25 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
 
             <svg viewBox="0 0 40 40" className="w-full h-full p-2 relative z-10 transition-transform duration-700">
               <g className="transition-all duration-1000">
-                {/* Eyes with Dynamic Lids */}
+                {/* Eyes with Dynamic Lids & Gaze */}
                 <g key={blinkKey} style={{ animation: `adhi-blink-anim 0.2s linear forwards`, transformOrigin: 'center 18px' }}>
                   <g style={{ transform: `scale(${moodConfig.eyeScale})`, transformOrigin: 'center 18px' }} className="transition-transform duration-[1200ms]">
-                    <circle cx="14" cy="18" r="1.4" fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} style={{ filter: moodConfig.eyeGlow }} className="transition-all duration-700" />
-                    <circle cx="26" cy="18" r="1.4" fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} style={{ filter: moodConfig.eyeGlow }} className="transition-all duration-700" />
+                    <circle 
+                      cx={14 + eyeOffset.x} 
+                      cy={18 + eyeOffset.y} 
+                      r="1.4" 
+                      fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} 
+                      style={{ filter: moodConfig.eyeGlow }} 
+                      className="transition-all duration-700 eye-gaze-transition" 
+                    />
+                    <circle 
+                      cx={26 + eyeOffset.x} 
+                      cy={18 + eyeOffset.y} 
+                      r="1.4" 
+                      fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} 
+                      style={{ filter: moodConfig.eyeGlow }} 
+                      className="transition-all duration-700 eye-gaze-transition" 
+                    />
                   </g>
                   
                   {/* Subtle Empathy Masks */}
@@ -285,9 +324,9 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
           </div>
         </div>
 
-        {/* Enhanced Voice selection UI with active indicator & wave preview */}
+        {/* Enhanced Voice selection UI with active indicator & explicit preview buttons */}
         {showVoiceMenu && (
-          <div className="absolute top-full left-0 mt-8 bg-slate-950/98 backdrop-blur-3xl border border-white/10 p-5 rounded-[2.5rem] shadow-[0_50px_100px_-30px_rgba(0,0,0,1)] z-[100] min-w-[260px] animate-in fade-in zoom-in-95 duration-400">
+          <div className="absolute top-full left-0 mt-8 bg-slate-950/98 backdrop-blur-3xl border border-white/10 p-5 rounded-[2.5rem] shadow-[0_50px_100px_-30px_rgba(0,0,0,1)] z-[100] min-w-[280px] animate-in fade-in zoom-in-95 duration-400">
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 mb-4">
               <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-black">Voice Texture</p>
               <button onClick={(e) => { e.stopPropagation(); setShowVoiceMenu(false); }} className="text-white/10 hover:text-white/50 transition-colors">
@@ -296,21 +335,32 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
             </div>
             <div className="space-y-1.5">
               {VOICE_OPTIONS.map(v => (
-                <button 
-                  key={v}
-                  onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); playPreview(v); }} 
-                  className={`w-full flex items-center justify-between px-5 py-3.5 rounded-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${selectedVoice === v ? 'bg-indigo-400 scale-125 shadow-[0_0_8px_#818cf8]' : 'bg-white/10 scale-100 group-hover/btn:bg-white/30'}`}></div>
-                    <span className={`text-sm tracking-wide transition-all ${selectedVoice === v ? 'font-black' : 'font-light'}`}>{v}</span>
-                  </div>
-                  {previewingVoice === v && (
-                    <div className="flex gap-0.5 h-3 items-center">
-                      {[1,2,3].map(i => <div key={i} className="w-0.5 bg-indigo-400 h-full animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
+                <div key={v} className="flex items-center gap-1 group/item">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); }} 
+                    className={`flex-1 flex items-center justify-between px-5 py-3.5 rounded-l-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${selectedVoice === v ? 'bg-indigo-400 scale-125 shadow-[0_0_8px_#818cf8]' : 'bg-white/10 scale-100 group-hover/btn:bg-white/30'}`}></div>
+                      <span className={`text-sm tracking-wide transition-all ${selectedVoice === v ? 'font-black' : 'font-light'}`}>{v}</span>
                     </div>
-                  )}
-                </button>
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); playPreview(v); }}
+                    className={`px-4 py-3.5 rounded-r-2xl border-l border-white/5 transition-all ${previewingVoice === v ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 hover:bg-indigo-600/20 text-white/20 hover:text-indigo-400'}`}
+                    title="Play Preview"
+                  >
+                    {previewingVoice === v ? (
+                      <div className="flex gap-0.5 h-3 items-center">
+                        {[1,2,3].map(i => <div key={i} className="w-0.5 bg-current h-full animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
+                      </div>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               ))}
             </div>
           </div>
