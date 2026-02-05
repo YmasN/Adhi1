@@ -50,6 +50,29 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">
           {renderText(message.text)}
         </p>
+
+        {isAdhi && message.sources && message.sources.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-white/5">
+            <p className="text-[9px] uppercase tracking-widest text-white/30 font-bold mb-2">Sources Found</p>
+            <div className="flex flex-wrap gap-2">
+              {message.sources.map((source, idx) => (
+                <a 
+                  key={idx} 
+                  href={source.uri} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-400/20 rounded-full text-[10px] text-indigo-300 transition-colors flex items-center gap-1.5"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  {source.title.length > 30 ? source.title.substring(0, 30) + '...' : source.title}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={`text-[10px] mt-2 opacity-30 ${isAdhi ? 'text-left' : 'text-right'}`}>
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>

@@ -477,7 +477,16 @@ The user is ${userName || 'a friend'}.`,
       const response = await getAdhiResponse(currentText, messages.map(m => ({ role: m.role === 'adhi' ? 'model' : 'user', parts: [{ text: m.text }] })), goals, memories, userName, currentFile || undefined);
       if (response.userName) setUserName(response.userName);
       if (response.insightToSave) setMemories(prev => [{ id: Date.now().toString(), text: response.insightToSave!, timestamp: new Date(), category: 'Insight' }, ...prev]);
-      const adhiMessage: Message = { id: (Date.now() + 1).toString(), role: 'adhi', text: response.text, mood: response.mood, timestamp: new Date() };
+      
+      const adhiMessage: Message = { 
+        id: (Date.now() + 1).toString(), 
+        role: 'adhi', 
+        text: response.text, 
+        mood: response.mood, 
+        timestamp: new Date(),
+        sources: response.sources
+      };
+      
       setMessages(prev => [...prev, adhiMessage]);
       setState(prev => ({ ...prev, currentMood: response.mood, isTyping: false }));
       const audioData = await getAdhiSpeech(response.text, state.selectedVoice);
@@ -738,7 +747,7 @@ The user is ${userName || 'a friend'}.`,
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                   {goals.map(goal => (
                     <div key={goal.id} className="p-10 bg-white/5 border border-white/10 rounded-[3rem] group hover:bg-white/10 transition-all duration-700">
-                       <h3 className="text-3xl font-medium text-white/80 group-hover:text-white mb-6 tracking-tight">{goal.title}</h3>
+                       <h3 className="text-3xl font-medium text-white/80 mb-6 tracking-tight">{goal.title}</h3>
                        <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden mb-10 ring-1 ring-white/5"><div className="h-full bg-gradient-to-r from-indigo-700 to-indigo-400" style={{ width: `${goal.progress}%` }}></div></div>
                        <p className="text-xl font-serif italic text-indigo-300/80">{goal.progress}% Alignment</p>
                     </div>

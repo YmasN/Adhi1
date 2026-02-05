@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ADHI_SYSTEM_PROMPT } from "../constants";
-import { AdhiMood, Goal, Memory, FileData, AdhiVoice } from "../types";
+import { AdhiMood, Goal, Memory, FileData, AdhiVoice, MessageSource } from "../types";
 
 export interface AdhiResponse {
   mood: AdhiMood;
@@ -13,6 +13,7 @@ export interface AdhiResponse {
     suggestedStep?: string;
     progressUpdate?: number;
   };
+  sources?: MessageSource[];
 }
 
 export const getAdhiResponse = async (
@@ -44,14 +45,15 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-09-2025', // Using flash for lower latency in continuous flow
+      model: 'gemini-3-flash-preview', 
       contents: [
         { role: 'user', parts: [{ text: contextPrompt }] },
-        ...history.slice(-10), // Keep history lean for speed
+        ...history.slice(-10),
         { role: 'user', parts: userParts }
       ],
       config: {
         systemInstruction: ADHI_SYSTEM_PROMPT,
+        tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -75,12 +77,28 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
     });
 
     const result = JSON.parse(response.text || '{}');
+    
+    // Extract search grounding sources
+    const sources: MessageSource[] = [];
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (groundingChunks) {
+      groundingChunks.forEach((chunk: any) => {
+        if (chunk.web && chunk.web.uri && chunk.web.title) {
+          sources.push({
+            title: chunk.web.title,
+            uri: chunk.web.uri
+          });
+        }
+      });
+    }
+
     return {
       mood: result.mood as AdhiMood || AdhiMood.NEUTRAL,
       text: result.text || "I am right here.",
       userName: result.userName,
       insightToSave: result.insightToSave,
-      goalUpdate: result.goalUpdate
+      goalUpdate: result.goalUpdate,
+      sources: sources.length > 0 ? sources : undefined
     };
   } catch (error) {
     console.error("Adhi Error:", error);

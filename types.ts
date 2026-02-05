@@ -35,6 +35,11 @@ export interface FileData {
   mimeType: string;
 }
 
+export interface MessageSource {
+  title: string;
+  uri: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'adhi';
@@ -42,6 +47,7 @@ export interface Message {
   mood?: AdhiMood;
   fileData?: FileData;
   timestamp: Date;
+  sources?: MessageSource[];
 }
 
 export interface AdhiState {
