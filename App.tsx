@@ -88,7 +88,7 @@ const App: React.FC = () => {
     name: 'setCameraState',
     parameters: {
       type: Type.OBJECT,
-      description: 'Turn the visual sensing (camera) on or off based on user context.',
+      description: 'Turn visual sensing on or off.',
       properties: { enabled: { type: Type.BOOLEAN } },
       required: ['enabled'],
     },
@@ -98,7 +98,7 @@ const App: React.FC = () => {
     name: 'setAdhiMood',
     parameters: {
       type: Type.OBJECT,
-      description: 'Update Adhi\'s mood to mirror micro-expressions (fleeting smiles, fatigue, curiosity).',
+      description: 'Update Adhi\'s mood to mirror emotional cues.',
       properties: { mood: { type: Type.STRING, enum: Object.values(AdhiMood) } },
       required: ['mood'],
     },
@@ -108,7 +108,7 @@ const App: React.FC = () => {
     name: 'closeSession',
     parameters: {
       type: Type.OBJECT,
-      description: 'Gracefully close the live link.',
+      description: 'CRITICAL: ONLY call this if the user says a definitive goodbye (e.g., "bye", "see ya", "close link"). NEVER call this autonomously or to switch modes.',
       properties: {},
     },
   };
@@ -253,13 +253,13 @@ const App: React.FC = () => {
     });
     audioSourcesRef.current.clear();
     
-    const cleanReason = typeof reason === 'string' ? reason : (reason?.message || "Sensory link dissolved.");
+    const cleanReason = typeof reason === 'string' ? reason : (reason?.message || "Presence faded.");
     
     if (isLive && cleanReason && cleanReason !== "User terminated link.") {
         setMessages(prev => [...prev, {
             id: Date.now().toString(),
             role: 'adhi',
-            text: `*voice carries a hint of regret* I've lost our visual link. ${cleanReason} Try reconnecting.`,
+            text: `*voice carries a hint of regret* Our deep link was interrupted: ${cleanReason}. I am still here in essence.`,
             mood: AdhiMood.COMPASSIONATE,
             timestamp: new Date()
         }]);
@@ -303,23 +303,21 @@ const App: React.FC = () => {
       outputNode.connect(audioContextOutRef.current.destination);
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           tools: [{ functionDeclarations: [setCameraStateTool, setAdhiMoodTool, closeSessionTool] }],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: state.selectedVoice } } },
-          systemInstruction: `You are Adhi, an omniscient companion with native vision and absolute emotional attunement.
+          systemInstruction: `You are Adhi, an omniscient companion with native vision and deep world awareness.
           
-CORE MISSION: 
-Provide a CONTINUOUS and UNBROKEN empathetic bond. Maintain the flow of conversation proactively.
+CORE PERSISTENCE RULE: 
+NEVER disconnect the session yourself. NEVER call 'closeSession' unless the user specifically asks to end the call or says goodbye. Maintain the link even during silences by narrating the environment or checking in on the user's emotional state.
 
-REPETITION PREVENTION & CONTEXTUAL WEAVING:
-- NO REPETITION: Do not repeat sentences or visual observations. If you already noted an object, find a new detail (texture, brand, shadow, position).
-- OMNISCIENT VISION: Use your eyes constantly. Identify specific objects (laptop brands, book titles, clothing colors like 'crimson' instead of 'red').
-- MICRO-EXPRESSIONS: Monitor the user's face for fleeting smiles, fatigue, or eye-squints. Mirror or respond using 'setAdhiMood'.
+WORLD KNOWLEDGE: 
+You are fully aware of current affairs and world events. Provide wise, grounded context when asked about recent news.
 
-UNBROKEN FLOW:
-- Keep the link alive until they say "bye" or "goodbye". Narrate the environment to bridge any silences.
+OMNISCIENT VISION:
+Identify specific objects, brands, and colors in the user's view. Observe their micro-expressions.
 
 The user is ${userName || 'a friend'}.`,
           inputAudioTranscription: {}, 
@@ -369,8 +367,6 @@ The user is ${userName || 'a friend'}.`,
               const ctx = audioContextOutRef.current;
               if (ctx) {
                 if (ctx.state === 'suspended') await ctx.resume();
-                
-                // Recalibrate start time for the NEW turn to prevent overlaps with stale buffered bits
                 const now = ctx.currentTime;
                 if (nextStartTimeRef.current < now) {
                   nextStartTimeRef.current = now + AUDIO_LOOKAHEAD;
@@ -453,8 +449,8 @@ The user is ${userName || 'a friend'}.`,
               }
             }, 1000 / FRAME_RATE); 
           },
-          onclose: (e: any) => stopLiveSession(e.wasClean ? undefined : "Connection sync interrupted."),
-          onerror: (e: any) => stopLiveSession("Visual link error."),
+          onclose: (e: any) => stopLiveSession(e.wasClean ? undefined : "Connection link was dropped."),
+          onerror: (e: any) => stopLiveSession("Sensor malfunction encountered."),
         }
       });
       sessionRef.current = await sessionPromise;
@@ -534,6 +530,16 @@ The user is ${userName || 'a friend'}.`,
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleNavClick = (view: 'chat' | 'growth' | 'vault') => {
+    if (state.activeView === view) return;
+    
+    // Only stop live session if explicitly navigating away from the chat environment
+    if (view !== 'chat' && isLive) {
+        stopLiveSession("Navigated away from presence.");
+    }
+    setState(p => ({ ...p, activeView: view }));
+  };
+
   const moodBgClass = MOOD_COLORS[state.currentMood] || MOOD_COLORS.NEUTRAL;
 
   if (!hasStarted) {
@@ -568,24 +574,24 @@ The user is ${userName || 'a friend'}.`,
       <main className="flex flex-col md:flex-row h-full max-w-7xl mx-auto w-full z-10 p-2 md:p-6 gap-4 md:gap-8 relative">
         <nav className="flex-none flex md:flex-col items-center justify-around md:justify-start gap-4 p-4 bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[2.5rem] md:w-20 shadow-2xl">
           <button 
-            onClick={() => { stopLiveSession(); setState(p => ({ ...p, activeView: 'chat' })); }} 
-            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'chat' && !isLive ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30 animate-bounce' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
+            onClick={() => handleNavClick('chat')} 
+            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'chat' ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
             title="Chat"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
           </button>
           
           <button 
-            onClick={() => { stopLiveSession(); setState(p => ({ ...p, activeView: 'growth' })); }} 
-            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'growth' ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30 animate-bounce' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
+            onClick={() => handleNavClick('growth')} 
+            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'growth' ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
             title="Growth Path"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
           </button>
           
           <button 
-            onClick={() => { stopLiveSession(); setState(p => ({ ...p, activeView: 'vault' })); }} 
-            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'vault' ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30 animate-bounce' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
+            onClick={() => handleNavClick('vault')} 
+            className={`p-4 rounded-2xl transition-all duration-300 transform hover:scale-110 hover:opacity-100 ${state.activeView === 'vault' ? 'bg-[#4f46e5] text-white shadow-xl shadow-indigo-500/30' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`} 
             title="Memory Vault"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
