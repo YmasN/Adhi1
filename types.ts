@@ -7,6 +7,8 @@ export enum AdhiMood {
   INTIMATE = 'INTIMATE'
 }
 
+export type MicroExpression = 'smile' | 'concern' | 'surprise' | 'fatigue' | 'focus' | 'none';
+
 export type AdhiVoice = 'Zephyr' | 'Kore' | 'Puck' | 'Charon' | 'Fenrir';
 
 export interface GoalStep {
@@ -52,6 +54,7 @@ export interface Message {
 
 export interface AdhiState {
   currentMood: AdhiMood;
+  microExpression?: MicroExpression;
   isTyping: boolean;
   activeView: 'chat' | 'growth' | 'vault';
   selectedVoice: AdhiVoice;

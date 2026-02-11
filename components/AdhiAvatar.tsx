@@ -1,14 +1,16 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { AdhiMood, AdhiVoice } from '../types';
+import { AdhiMood, AdhiVoice, MicroExpression } from '../types';
 import { MOOD_COLORS } from '../constants';
 import { getAdhiSpeech } from '../services/geminiService';
 
 interface AdhiAvatarProps {
   mood: AdhiMood;
+  microExpression?: MicroExpression;
   isTyping: boolean;
   isSpeaking?: boolean;
   isListening?: boolean;
+  volume?: number; // Real-time volume for lip-sync
   selectedVoice?: AdhiVoice;
   onVoiceChange?: (voice: AdhiVoice) => void;
   visionStatus?: 'idle' | 'sensing' | 'active' | 'inhibited';
@@ -19,9 +21,11 @@ const VOICE_OPTIONS: AdhiVoice[] = ['Zephyr', 'Kore', 'Puck', 'Charon', 'Fenrir'
 
 const AdhiAvatar: React.FC<AdhiAvatarProps> = ({ 
   mood, 
+  microExpression = 'none',
   isTyping, 
   isSpeaking, 
   isListening,
+  volume = 0,
   selectedVoice, 
   onVoiceChange,
   visionStatus = 'idle',
@@ -32,7 +36,6 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
   const [showVoiceMenu, setShowVoiceMenu] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const [speechCycle, setSpeechCycle] = useState(0);
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
 
   const isAnalytical = visionStatus === 'active' || visionStatus === 'sensing';
@@ -41,8 +44,6 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
   useEffect(() => {
     let timeoutId: number;
     const shiftGaze = () => {
-      // Intensely listening or speaking = more stable gaze
-      // Processing/Typing = more rapid shifts
       const magnitude = isTyping ? 1.5 : (isSpeaking || isListening) ? 0.3 : 0.8;
       
       setEyeOffset({
@@ -58,33 +59,17 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
     return () => clearTimeout(timeoutId);
   }, [isTyping, isSpeaking, isListening]);
 
-  // Natural speech-sync mouth animation
-  useEffect(() => {
-    if (!isSpeaking) {
-      setSpeechCycle(0);
-      return;
-    }
-    let timeoutId: number;
-    const cycle = () => {
-      setSpeechCycle(prev => (prev + 1) % 4);
-      const nextDelay = 65 + Math.random() * 90; 
-      timeoutId = window.setTimeout(cycle, nextDelay);
-    };
-    cycle();
-    return () => clearTimeout(timeoutId);
-  }, [isSpeaking]);
-
-  // Non-uniform blinking to feel more human
+  // Non-uniform blinking
   useEffect(() => {
     let timeoutId: number;
     const triggerBlink = () => {
       setBlinkKey(prev => prev + 1);
-      const isRelaxed = mood === AdhiMood.WISE || mood === AdhiMood.INTIMATE;
+      const isRelaxed = mood === AdhiMood.WISE || mood === AdhiMood.INTIMATE || microExpression === 'fatigue';
       const baseDelay = isRelaxed ? 8000 : 5000;
       
       const rand = Math.random();
       let nextDelay: number;
-      if (rand > 0.95) nextDelay = 150; // Double blink
+      if (rand > 0.95) nextDelay = 150; 
       else if (rand > 0.8) nextDelay = 400 + Math.random() * 300;
       else nextDelay = baseDelay + (Math.random() * 4000);
       
@@ -92,12 +77,21 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
     };
     timeoutId = window.setTimeout(triggerBlink, 3000);
     return () => clearTimeout(timeoutId);
-  }, [mood]);
+  }, [mood, microExpression]);
 
   const moodConfig = useMemo(() => {
+    let config = {
+      animation: 'adhi-gentle-sway', 
+      mouthPath: "M18 28.5 Q20 29 22 28.5", 
+      eyeScale: 1.0,
+      eyebrowRotation: 0,
+      lidScale: 1.0,
+      eyeGlow: 'none'
+    };
+
     switch (mood) {
       case AdhiMood.JOYFUL: 
-        return { 
+        config = { 
           animation: 'adhi-joy-float', 
           mouthPath: "M14 27.5 Q20 31.5 26 27.5", 
           eyeScale: 1.3,
@@ -105,44 +99,67 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
           lidScale: 1.0,
           eyeGlow: '0 0 15px rgba(255, 255, 255, 0.5)'
         };
+        break;
       case AdhiMood.COMPASSIONATE: 
-        return { 
+        config = { 
           animation: 'adhi-gentle-sway', 
           mouthPath: "M17 28.5 Q20 27.5 23 28.5", 
           eyeScale: 0.9,
           eyebrowRotation: 4,
-          lidScale: 0.65, // Soft heavy lids for empathy
+          lidScale: 0.65, 
           eyeGlow: 'none'
         };
+        break;
       case AdhiMood.WISE: 
-        return { 
+        config = { 
           animation: 'adhi-wise-pulse', 
           mouthPath: "M18 28.5 Q20 28.8 22 28.5", 
           eyeScale: 1.15,
           eyebrowRotation: 0,
-          lidScale: 0.9, // Focused gaze
+          lidScale: 0.9, 
           eyeGlow: '0 0 10px rgba(129, 140, 248, 0.4)'
         };
+        break;
       case AdhiMood.INTIMATE: 
-        return { 
+        config = { 
           animation: 'adhi-intimate-drift', 
           mouthPath: "M17.5 28.2 Q20 28.9 22.5 28.2", 
           eyeScale: 0.85,
           eyebrowRotation: 5,
-          lidScale: 0.6, // Deeply relaxed gaze
+          lidScale: 0.6, 
           eyeGlow: 'none'
         };
-      default: 
-        return { 
-          animation: 'adhi-gentle-sway', 
-          mouthPath: "M18 28.5 Q20 29 22 28.5", 
-          eyeScale: 1.0,
-          eyebrowRotation: 0,
-          lidScale: 1.0,
-          eyeGlow: 'none'
-        };
+        break;
     }
-  }, [mood]);
+
+    // Overlay Micro-Expressions
+    switch (microExpression) {
+      case 'smile':
+        config.mouthPath = "M16 27.5 Q20 30.5 24 27.5";
+        config.eyebrowRotation = config.eyebrowRotation - 3;
+        break;
+      case 'concern':
+        config.mouthPath = "M18 29 Q20 27.5 22 29";
+        config.eyebrowRotation = config.eyebrowRotation + 6;
+        break;
+      case 'surprise':
+        config.eyeScale = config.eyeScale * 1.2;
+        config.lidScale = 1.0;
+        config.eyebrowRotation = config.eyebrowRotation - 10;
+        config.mouthPath = "M19 28.5 Q20 31 21 28.5";
+        break;
+      case 'fatigue':
+        config.lidScale = config.lidScale * 0.5;
+        config.animation = 'adhi-intimate-drift';
+        break;
+      case 'focus':
+        config.eyeScale = config.eyeScale * 0.9;
+        config.eyebrowRotation = config.eyebrowRotation + 2;
+        break;
+    }
+
+    return config;
+  }, [mood, microExpression]);
 
   const playPreview = async (voice: AdhiVoice) => {
     if (previewingVoice) return;
@@ -176,14 +193,21 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
 
   const finalScale = (isAnalytical || isSpeaking || isListening ? scale * 1.12 : scale);
 
-  const getSpeechPath = () => {
-    const paths = [
-      "M18 28.5 Q20 29 22 28.5", // Closed
-      "M16 28.5 Q20 33.5 24 28.5", // Open
-      "M17 28.5 Q20 31.5 23 28.5", // Mid
-      "M15 28.5 Q20 35.5 25 28.5"  // Wide
-    ];
-    return paths[speechCycle];
+  const getDynamicMouthPath = () => {
+    const activeVolume = isSpeaking ? volume : 0;
+    
+    if (activeVolume < 0.02) {
+      if (isListening && !isSpeaking) return null; 
+      return moodConfig.mouthPath;
+    }
+    
+    const t = Math.pow(activeVolume, 0.7);
+    const drop = 1 + (t * 12); 
+    const width = 18 - (t * 5); 
+    const left = 20 - (width / 2);
+    const right = 20 + (width / 2);
+    
+    return `M${left} 28.5 Q20 ${28.5 + drop} ${right} 28.5`;
   };
 
   return (
@@ -211,16 +235,16 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
             33% { transform: translate(-2px, -3px) rotate(-0.5deg); }
             66% { transform: translate(1px, 2px) rotate(1deg); }
           }
-          @keyframes adhi-iris-scan-dynamic {
-            0%, 100% { transform: scale(1) translate(0,0); opacity: 0.15; }
-            50% { transform: scale(1.4) translate(1px, -1px); opacity: 0.5; }
-          }
           @keyframes adhi-blink-anim {
             0%, 94%, 100% { transform: scaleY(1); }
             97% { transform: scaleY(0.05); }
           }
+          @keyframes iris-analytical-scan {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.4); opacity: 1; filter: blur(2px); }
+          }
           .mouth-transition {
-            transition: d 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: d 0.05s linear;
           }
           .eye-gaze-transition {
             transition: cx 0.4s ease-out, cy 0.4s ease-out;
@@ -235,88 +259,34 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
         <div className={`relative w-14 h-14 rounded-full bg-gradient-to-br ${gradientClass} p-[2.5px] shadow-3xl transition-all duration-1000 animate-adhi-mood ${moodConfig.animation}`}>
           <div className="w-full h-full rounded-full bg-slate-900/98 backdrop-blur-3xl flex flex-col items-center justify-center overflow-hidden relative border border-white/10">
             
-            {/* Visual Analytics grid layer */}
             {isAnalytical && (
-              <div className="absolute inset-0 z-0 opacity-30">
-                <div className="absolute inset-0 border-[0.5px] border-indigo-400/20 rounded-full animate-[spin_20s_linear_infinite]"></div>
-                <div className="absolute inset-4 border-[0.5px] border-indigo-300/10 rounded-full animate-[spin_12s_linear_infinite_reverse]"></div>
-                <div className="absolute inset-x-0 h-[1px] bg-indigo-200/40 blur-[1px] animate-[scan_4s_ease-in-out_infinite]"></div>
+              <div className="absolute inset-0 z-0 opacity-40">
+                <div className="absolute inset-0 border-[0.5px] border-indigo-400/30 rounded-full animate-[spin_10s_linear_infinite]"></div>
+                <div className="absolute inset-x-0 h-[1px] bg-cyan-200/40 blur-[1px] animate-[scan_3s_ease-in-out_infinite]"></div>
+                <div className="absolute inset-y-0 w-[1px] bg-indigo-200/40 blur-[1px] left-1/2 animate-[scan_5s_ease-in-out_infinite]"></div>
               </div>
             )}
 
-            <svg viewBox="0 0 40 40" className="w-full h-full p-2 relative z-10 transition-transform duration-700">
+            <svg viewBox="0 0 40 40" className="w-full h-full p-2 relative z-10">
               <g className="transition-all duration-1000">
-                {/* Eyes with Dynamic Lids & Gaze */}
                 <g key={blinkKey} style={{ animation: `adhi-blink-anim 0.2s linear forwards`, transformOrigin: 'center 18px' }}>
-                  <g style={{ transform: `scale(${moodConfig.eyeScale})`, transformOrigin: 'center 18px' }} className="transition-transform duration-[1200ms]">
-                    <circle 
-                      cx={14 + eyeOffset.x} 
-                      cy={18 + eyeOffset.y} 
-                      r="1.4" 
-                      fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} 
-                      style={{ filter: moodConfig.eyeGlow }} 
-                      className="transition-all duration-700 eye-gaze-transition" 
-                    />
-                    <circle 
-                      cx={26 + eyeOffset.x} 
-                      cy={18 + eyeOffset.y} 
-                      r="1.4" 
-                      fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} 
-                      style={{ filter: moodConfig.eyeGlow }} 
-                      className="transition-all duration-700 eye-gaze-transition" 
-                    />
+                  <g style={{ transform: `scale(${moodConfig.eyeScale})`, transformOrigin: 'center 18px' }}>
+                    <circle cx={14 + eyeOffset.x} cy={18 + eyeOffset.y} r="1.4" fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} style={{ filter: moodConfig.eyeGlow, animation: isAnalytical ? 'iris-analytical-scan 2s ease-in-out infinite' : 'none' }} className="eye-gaze-transition" />
+                    <circle cx={26 + eyeOffset.x} cy={18 + eyeOffset.y} r="1.4" fill={isListening ? "#22d3ee" : isAnalytical ? "#818cf8" : "white"} style={{ filter: moodConfig.eyeGlow, animation: isAnalytical ? 'iris-analytical-scan 2s ease-in-out infinite' : 'none' }} className="eye-gaze-transition" />
                   </g>
-                  
-                  {/* Subtle Empathy Masks */}
                   <g style={{ transform: `scaleY(${moodConfig.lidScale})`, transformOrigin: 'center 16px' }} className="transition-transform duration-[1000ms]">
                     <rect x="10" y="14" width="8" height="2" fill="#0f172a" opacity="0.85" />
                     <rect x="22" y="14" width="8" height="2" fill="#0f172a" opacity="0.85" />
                   </g>
-
-                  {isAnalytical && (
-                    <g className="animate-[adhi-iris-scan-dynamic_3s_ease-in-out_infinite]">
-                      <circle cx="14" cy="18" r="3.5" stroke="#818cf8" strokeWidth="0.4" fill="none" />
-                      <circle cx="26" cy="18" r="3.5" stroke="#818cf8" strokeWidth="0.4" fill="none" />
-                    </g>
-                  )}
                 </g>
-                
-                {/* Brow Lines for micro-expression support */}
-                <path 
-                  d="M12 14.5 Q14 13.5 16 14.5" 
-                  stroke="white" strokeWidth="0.6" fill="none" opacity="0.4"
-                  style={{ transform: `rotate(${moodConfig.eyebrowRotation}deg)`, transformOrigin: '14px 14.5px' }}
-                  className="transition-transform duration-1000"
-                />
-                <path 
-                  d="M24 14.5 Q26 13.5 28 14.5" 
-                  stroke="white" strokeWidth="0.6" fill="none" opacity="0.4"
-                  style={{ transform: `rotate(${-moodConfig.eyebrowRotation}deg)`, transformOrigin: '26px 14.5px' }}
-                  className="transition-transform duration-1000"
-                />
+                <path d="M12 14.5 Q14 13.5 16 14.5" stroke="white" strokeWidth="0.6" fill="none" opacity="0.4" style={{ transform: `rotate(${moodConfig.eyebrowRotation}deg)`, transformOrigin: '14px 14.5px' }} />
+                <path d="M24 14.5 Q26 13.5 28 14.5" stroke="white" strokeWidth="0.6" fill="none" opacity="0.4" style={{ transform: `rotate(${-moodConfig.eyebrowRotation}deg)`, transformOrigin: '26px 14.5px' }} />
 
-                {/* Mouth Synthesis Visualization */}
-                <g className="transition-all duration-[1000ms]">
-                  {isSpeaking ? (
-                    <path 
-                      d={getSpeechPath()}
-                      fill="none" 
-                      stroke="white" 
-                      strokeWidth="1.4" 
-                      strokeLinecap="round"
-                      className="mouth-transition"
-                    />
-                  ) : isListening ? (
+                <g>
+                  {isListening && !isSpeaking ? (
                     <circle cx="20" cy="29" r="1.8" fill="#22d3ee" className="animate-pulse shadow-[0_0_10px_#22d3ee]" />
                   ) : (
-                    <path 
-                      d={moodConfig.mouthPath} 
-                      stroke="white" 
-                      strokeWidth="1.2" 
-                      fill="none" 
-                      strokeLinecap="round"
-                      className="transition-all duration-[1200ms] opacity-95"
-                    />
+                    <path d={getDynamicMouthPath() || moodConfig.mouthPath} fill="none" stroke="white" strokeWidth="1.4" strokeLinecap="round" className="mouth-transition" />
                   )}
                 </g>
               </g>
@@ -324,7 +294,6 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
           </div>
         </div>
 
-        {/* Enhanced Voice selection UI with active indicator & explicit preview buttons */}
         {showVoiceMenu && (
           <div className="absolute top-full left-0 mt-8 bg-slate-950/98 backdrop-blur-3xl border border-white/10 p-5 rounded-[2.5rem] shadow-[0_50px_100px_-30px_rgba(0,0,0,1)] z-[100] min-w-[280px] animate-in fade-in zoom-in-95 duration-400">
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 mb-4">
@@ -336,28 +305,19 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
             <div className="space-y-1.5">
               {VOICE_OPTIONS.map(v => (
                 <div key={v} className="flex items-center gap-1 group/item">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); }} 
-                    className={`flex-1 flex items-center justify-between px-5 py-3.5 rounded-l-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); }} className={`flex-1 flex items-center justify-between px-5 py-3.5 rounded-l-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}>
                     <div className="flex items-center gap-4">
                       <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${selectedVoice === v ? 'bg-indigo-400 scale-125 shadow-[0_0_8px_#818cf8]' : 'bg-white/10 scale-100 group-hover/btn:bg-white/30'}`}></div>
                       <span className={`text-sm tracking-wide transition-all ${selectedVoice === v ? 'font-black' : 'font-light'}`}>{v}</span>
                     </div>
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); playPreview(v); }}
-                    className={`px-4 py-3.5 rounded-r-2xl border-l border-white/5 transition-all ${previewingVoice === v ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 hover:bg-indigo-600/20 text-white/20 hover:text-indigo-400'}`}
-                    title="Play Preview"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); playPreview(v); }} className={`px-4 py-3.5 rounded-r-2xl border-l border-white/5 transition-all ${previewingVoice === v ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 hover:bg-indigo-600/20 text-white/20 hover:text-indigo-400'}`}>
                     {previewingVoice === v ? (
                       <div className="flex gap-0.5 h-3 items-center">
                         {[1,2,3].map(i => <div key={i} className="w-0.5 bg-current h-full animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
                       </div>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
                     )}
                   </button>
                 </div>
@@ -367,9 +327,8 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
         )}
       </div>
 
-      {/* Persistent Identity Feedback */}
       <div className="hidden sm:block pointer-events-none select-none">
-        <h1 className="text-xl font-serif italic text-white/95 leading-none tracking-tight">Adhi</h1>
+        <h1 className="text-xl font-serif italic text-white/95 leading-none tracking-tight">{microExpression !== 'none' ? `Adhi (${microExpression})` : 'Adhi'}</h1>
         <div className="flex items-center gap-2.5 mt-2.5">
            <div className={`text-[9.5px] uppercase tracking-[0.4em] transition-all duration-700 font-bold ${isSpeaking ? 'text-indigo-300' : isTyping ? 'text-indigo-400 animate-pulse' : isListening ? 'text-cyan-400' : isAnalytical ? 'text-indigo-400' : 'text-white/30'}`}>
             {isSpeaking ? 'Speaking' : isTyping ? 'Synthesizing' : isListening ? 'Attuned' : isAnalytical ? 'Iris Active' : mood.toLowerCase()}

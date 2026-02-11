@@ -111,6 +111,7 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
 
 export const getAdhiSpeech = async (text: string, voiceName: AdhiVoice = 'Kore'): Promise<string | undefined> => {
   try {
+    // FIX: Always use a named parameter for GoogleGenAI initialization.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     // Remove italicized actions for speech
     const cleanText = text.replace(/\*[^*]+\*/g, '').trim();
