@@ -43,16 +43,40 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
     });
   }
 
+  const rawHistory = history.slice(-10);
+  const validHistory: any[] = [];
+  let lastRole = '';
+  for (const msg of rawHistory) {
+    if (msg.role !== lastRole) {
+      validHistory.push({ role: msg.role, parts: [...msg.parts] });
+      lastRole = msg.role;
+    } else {
+      validHistory[validHistory.length - 1].parts.push(...msg.parts);
+    }
+  }
+
+  // If validHistory ends with 'user', and we are about to append another 'user' message, combine them
+  if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
+    validHistory[validHistory.length - 1].parts.push(...userParts);
+    userParts.length = 0; // Clear userParts so we don't append it again
+  }
+
+  // The Gemini API requires the first message in the contents array to be from the user.
+  if (validHistory.length > 0 && validHistory[0].role === 'model') {
+    validHistory.shift();
+  }
+
   try {
+    const contents = [...validHistory];
+    if (userParts.length > 0) {
+      contents.push({ role: 'user', parts: userParts });
+    }
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview', 
-      contents: [
-        { role: 'user', parts: [{ text: contextPrompt }] },
-        ...history.slice(-10),
-        { role: 'user', parts: userParts }
-      ],
+      contents,
       config: {
-        systemInstruction: ADHI_SYSTEM_PROMPT,
+        systemInstruction: ADHI_SYSTEM_PROMPT + "\n\n" + contextPrompt,
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
         responseSchema: {

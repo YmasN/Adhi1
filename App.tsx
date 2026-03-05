@@ -412,8 +412,7 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
           systemInstruction: ADHI_SYSTEM_PROMPT + "\n\n" + contextPrompt,
           responseModalities: [Modality.AUDIO],
           tools: [
-            { functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool] },
-            { googleSearch: {} }
+            { functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool] }
           ],
           speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: state.selectedVoice } }
@@ -620,8 +619,8 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
                 <button onClick={() => fileInputRef.current?.click()} className="p-3 text-white/30 hover:text-indigo-400 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                 </button>
-                <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Communicate with Adhi..." className="flex-1 bg-transparent border-none focus:ring-0 text-sm md:text-base py-3 px-2 placeholder:text-white/20" />
-                <button onClick={handleSendMessage} disabled={!inputValue.trim() && !pendingFile} className="bg-indigo-600 hover:bg-indigo-500 p-3 rounded-full text-white shadow-lg disabled:opacity-50">
+                <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !state.isTyping && handleSendMessage()} disabled={state.isTyping} placeholder="Communicate with Adhi..." className="flex-1 bg-transparent border-none focus:ring-0 text-sm md:text-base py-3 px-2 placeholder:text-white/20 disabled:opacity-50" />
+                <button onClick={handleSendMessage} disabled={(!inputValue.trim() && !pendingFile) || state.isTyping} className="bg-indigo-600 hover:bg-indigo-500 p-3 rounded-full text-white shadow-lg disabled:opacity-50">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
                 </button>
               </div>
