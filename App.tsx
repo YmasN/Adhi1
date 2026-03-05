@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { AdhiMood, Message, AdhiState, Goal, Memory, FileData, AdhiVoice, MicroExpression } from './types';
+import { AdhiMood, Message, AdhiState, Goal, Memory, FileData, AdhiVoice, MicroExpression, SpeakingPace } from './types';
 import { getAdhiResponse, getAdhiSpeech } from './services/geminiService';
 import AdhiAvatar from './components/AdhiAvatar';
 import ChatMessage from './components/ChatMessage';
@@ -9,8 +9,8 @@ import { ADHI_GREETINGS, MOOD_COLORS, ADHI_SYSTEM_PROMPT } from './constants';
 
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
-const FRAME_RATE = 6; 
-const JPEG_QUALITY = 0.94; 
+const FRAME_RATE = 2; // Reduced from 6 to prevent buffer congestion and lag
+const JPEG_QUALITY = 0.6; // Reduced from 0.94/0.85 for faster transmission
 
 function encode(bytes: Uint8Array): string {
   let binary = '';
@@ -74,13 +74,15 @@ const App: React.FC = () => {
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const [visionStatus, setVisionStatus] = useState<'idle' | 'sensing' | 'active' | 'inhibited'>('idle');
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [isSavingVault, setIsSavingVault] = useState(false);
   
   const [state, setState] = useState<AdhiState>({
     currentMood: AdhiMood.NEUTRAL,
     microExpression: 'none',
     isTyping: false,
     activeView: 'chat',
-    selectedVoice: (localStorage.getItem('adhi_voice') as AdhiVoice) || 'Kore'
+    selectedVoice: (localStorage.getItem('adhi_voice') as AdhiVoice) || 'Kore',
+    speakingPace: (localStorage.getItem('adhi_pace') as SpeakingPace) || 'normal'
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -179,9 +181,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (userName) localStorage.setItem('adhi_user_name', userName);
     localStorage.setItem('adhi_voice', state.selectedVoice);
+    localStorage.setItem('adhi_pace', state.speakingPace);
     localStorage.setItem('adhi_last_mood', state.currentMood);
     localStorage.setItem('adhi_last_seen', new Date().toISOString());
-  }, [userName, state.selectedVoice, state.currentMood]);
+  }, [userName, state.selectedVoice, state.speakingPace, state.currentMood]);
 
   useEffect(() => {
     const lastMood = localStorage.getItem('adhi_last_mood') as AdhiMood || AdhiMood.NEUTRAL;
@@ -283,8 +286,15 @@ const App: React.FC = () => {
       analyser.connect(audioCtxOut.destination);
       analyserRef.current = analyser;
 
+      const contextPrompt = `
+Current Context:
+User Name: ${userName || 'Unknown'}
+User Goals: ${goals.map(g => `${g.title} (${g.progress}% done)`).join(', ') || 'None yet'}
+Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
+`;
+
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
           onopen: () => {
             setIsListening(true);
@@ -306,9 +316,28 @@ const App: React.FC = () => {
                     if (!videoRef.current || !canvasRef.current) return;
                     const ctx = canvasRef.current.getContext('2d');
                     if (!ctx) return;
-                    canvasRef.current.width = videoRef.current.videoWidth;
-                    canvasRef.current.height = videoRef.current.videoHeight;
-                    ctx.drawImage(videoRef.current, 0, 0);
+                    
+                    // Cap resolution for better performance while maintaining clarity
+                    const MAX_DIM = 640;
+                    let width = videoRef.current.videoWidth;
+                    let height = videoRef.current.videoHeight;
+                    
+                    if (width > height) {
+                        if (width > MAX_DIM) {
+                            height = Math.round((height * MAX_DIM) / width);
+                            width = MAX_DIM;
+                        }
+                    } else {
+                        if (height > MAX_DIM) {
+                            width = Math.round((width * MAX_DIM) / height);
+                            height = MAX_DIM;
+                        }
+                    }
+
+                    canvasRef.current.width = width;
+                    canvasRef.current.height = height;
+                    ctx.drawImage(videoRef.current, 0, 0, width, height);
+                    
                     canvasRef.current.toBlob(async blob => {
                         if (blob) {
                             const reader = new FileReader();
@@ -380,9 +409,12 @@ const App: React.FC = () => {
           }
         },
         config: {
-          systemInstruction: ADHI_SYSTEM_PROMPT,
+          systemInstruction: ADHI_SYSTEM_PROMPT + "\n\n" + contextPrompt,
           responseModalities: [Modality.AUDIO],
-          tools: [{ functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool] }],
+          tools: [
+            { functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool] },
+            { googleSearch: {} }
+          ],
           speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: state.selectedVoice } }
           }
@@ -397,10 +429,6 @@ const App: React.FC = () => {
     }
   };
 
-  /**
-   * Fix for 'Cannot find name handleFileChange'.
-   * Handles selecting a file, converting it to base64, and storing it in state for the next message.
-   */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -462,9 +490,55 @@ const App: React.FC = () => {
         ]);
       }
 
+      // Voice response with selected pace
+      const audio = await getAdhiSpeech(response.text, state.selectedVoice, state.speakingPace);
+      if (audio) {
+        const bytes = decode(audio);
+        if (!audioContextOutRef.current || audioContextOutRef.current.state === 'closed') {
+          audioContextOutRef.current = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+        }
+        const ctx = audioContextOutRef.current;
+        const buffer = await decodeAudioData(bytes, ctx, OUTPUT_SAMPLE_RATE, 1);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start();
+        setIsSpeaking(true);
+        source.onended = () => setIsSpeaking(false);
+      }
+
     } catch (error) {
       console.error(error);
       setState(prev => ({ ...prev, isTyping: false }));
+    }
+  };
+
+  const saveConversationToVault = async () => {
+    if (messages.length < 2 || isSavingVault) return;
+    setIsSavingVault(true);
+    
+    try {
+      const transcript = messages.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ role: 'user', parts: [{ text: `Summarize this conversation into a single, profound, and useful memory entry for the Memory Vault. Focus on the core insights or emotional shifts. Length: 1-3 sentences.\n\nTranscript:\n${transcript}` }] }],
+      });
+      
+      const summary = response.text?.trim();
+      if (summary) {
+        setMemories(prev => [
+          ...prev,
+          { id: Date.now().toString(), text: summary, timestamp: new Date(), category: 'Journal' }
+        ]);
+        alert("Conversation essence distilled and secured in the Vault.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Distillation failed. Please try again later.");
+    } finally {
+      setIsSavingVault(false);
     }
   };
 
@@ -480,6 +554,8 @@ const App: React.FC = () => {
           volume={speechVolume}
           selectedVoice={state.selectedVoice}
           onVoiceChange={(v) => setState(s => ({ ...s, selectedVoice: v }))}
+          speakingPace={state.speakingPace}
+          onPaceChange={(p) => setState(s => ({ ...s, speakingPace: p }))}
           visionStatus={visionStatus}
         />
         
@@ -521,12 +597,24 @@ const App: React.FC = () => {
             </div>
 
             <div className="p-6 md:px-20 border-t border-white/5 bg-slate-950/80 backdrop-blur-md">
-              {pendingFile && (
-                <div className="mb-4 flex items-center gap-3 p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl max-w-fit">
-                   <span className="text-xs text-indigo-300">Attached: {pendingFile.mimeType}</span>
-                   <button onClick={() => setPendingFile(null)} className="text-indigo-300/50 hover:text-indigo-300">✕</button>
-                </div>
-              )}
+              <div className="flex items-center justify-between mb-4">
+                {pendingFile ? (
+                  <div className="flex items-center gap-3 p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl max-w-fit">
+                    <span className="text-xs text-indigo-300">Attached: {pendingFile.mimeType}</span>
+                    <button onClick={() => setPendingFile(null)} className="text-indigo-300/50 hover:text-indigo-300">✕</button>
+                  </div>
+                ) : <div />}
+                
+                <button 
+                  onClick={saveConversationToVault}
+                  disabled={messages.length < 2 || isSavingVault}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-indigo-500/10 border border-white/10 hover:border-indigo-500/30 rounded-xl text-[10px] uppercase tracking-widest font-black transition-all disabled:opacity-30"
+                >
+                  {isSavingVault ? 'Distilling...' : 'Commit to Vault'}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                </button>
+              </div>
+
               <div className="flex items-center gap-4 bg-white/5 p-2 rounded-[2rem] border border-white/10 focus-within:border-indigo-500/50 transition-all">
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf" />
                 <button onClick={() => fileInputRef.current?.click()} className="p-3 text-white/30 hover:text-indigo-400 transition-colors">
@@ -586,6 +674,46 @@ const App: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {state.activeView === 'growth' && (
+          <div className="flex-1 overflow-y-auto p-10 md:px-20 animate-in fade-in slide-in-from-bottom-4">
+             <div className="mb-12">
+                <h2 className="text-4xl font-serif italic text-white/90">Growth Path</h2>
+                <p className="text-white/30 mt-2">Personal evolution tracked and encouraged.</p>
+             </div>
+             
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {goals.length > 0 ? goals.map(goal => (
+                  <div key={goal.id} className="bg-white/5 border border-white/5 p-8 rounded-[3rem] hover:border-indigo-500/20 transition-all">
+                     <div className="flex items-center justify-between mb-8">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest text-indigo-400 font-black">{goal.category}</span>
+                          <h3 className="text-2xl font-bold mt-1">{goal.title}</h3>
+                        </div>
+                        <div className="text-3xl font-serif italic text-white/20">{goal.progress}%</div>
+                     </div>
+                     <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden mb-8">
+                        <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${goal.progress}%` }}></div>
+                     </div>
+                     <div className="space-y-4">
+                        {goal.steps.map((step, i) => (
+                          <div key={i} className="flex items-center gap-4 group">
+                             <div className={`w-5 h-5 rounded-full border border-white/10 flex items-center justify-center transition-all ${step.completed ? 'bg-indigo-500 border-indigo-400' : 'group-hover:border-white/20'}`}>
+                                {step.completed && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                             </div>
+                             <span className={`text-sm ${step.completed ? 'text-white/20 line-through' : 'text-white/70'}`}>{step.text}</span>
+                          </div>
+                        ))}
+                     </div>
+                  </div>
+                )) : (
+                  <div className="col-span-full py-20 text-center border-2 border-dashed border-white/5 rounded-[3rem]">
+                    <p className="text-white/20 italic font-serif text-xl">No growth patterns established. Share your aspirations with Adhi.</p>
+                  </div>
+                )}
+             </div>
           </div>
         )}
 

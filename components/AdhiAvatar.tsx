@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { AdhiMood, AdhiVoice, MicroExpression } from '../types';
+import { AdhiMood, AdhiVoice, MicroExpression, SpeakingPace } from '../types';
 import { MOOD_COLORS } from '../constants';
 import { getAdhiSpeech } from '../services/geminiService';
 
@@ -13,11 +13,14 @@ interface AdhiAvatarProps {
   volume?: number; // Real-time volume for lip-sync
   selectedVoice?: AdhiVoice;
   onVoiceChange?: (voice: AdhiVoice) => void;
+  speakingPace?: SpeakingPace;
+  onPaceChange?: (pace: SpeakingPace) => void;
   visionStatus?: 'idle' | 'sensing' | 'active' | 'inhibited';
   scale?: number;
 }
 
 const VOICE_OPTIONS: AdhiVoice[] = ['Zephyr', 'Kore', 'Puck', 'Charon', 'Fenrir'];
+const PACE_OPTIONS: SpeakingPace[] = ['slow', 'normal', 'fast'];
 
 const AdhiAvatar: React.FC<AdhiAvatarProps> = ({ 
   mood, 
@@ -28,6 +31,8 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
   volume = 0,
   selectedVoice, 
   onVoiceChange,
+  speakingPace = 'normal',
+  onPaceChange,
   visionStatus = 'idle',
   scale = 1
 }) => {
@@ -165,7 +170,7 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
     if (previewingVoice) return;
     setPreviewingVoice(voice);
     try {
-      const audioData = await getAdhiSpeech(`I am Adhi.`, voice);
+      const audioData = await getAdhiSpeech(`I am Adhi.`, voice, speakingPace as SpeakingPace);
       if (audioData) {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -297,31 +302,50 @@ const AdhiAvatar: React.FC<AdhiAvatarProps> = ({
         {showVoiceMenu && (
           <div className="absolute top-full left-0 mt-8 bg-slate-950/98 backdrop-blur-3xl border border-white/10 p-5 rounded-[2.5rem] shadow-[0_50px_100px_-30px_rgba(0,0,0,1)] z-[100] min-w-[280px] animate-in fade-in zoom-in-95 duration-400">
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 mb-4">
-              <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-black">Voice Texture</p>
+              <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-black">Voice Engine</p>
               <button onClick={(e) => { e.stopPropagation(); setShowVoiceMenu(false); }} className="text-white/10 hover:text-white/50 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="space-y-1.5">
-              {VOICE_OPTIONS.map(v => (
-                <div key={v} className="flex items-center gap-1 group/item">
-                  <button onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); }} className={`flex-1 flex items-center justify-between px-5 py-3.5 rounded-l-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${selectedVoice === v ? 'bg-indigo-400 scale-125 shadow-[0_0_8px_#818cf8]' : 'bg-white/10 scale-100 group-hover/btn:bg-white/30'}`}></div>
-                      <span className={`text-sm tracking-wide transition-all ${selectedVoice === v ? 'font-black' : 'font-light'}`}>{v}</span>
-                    </div>
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); playPreview(v); }} className={`px-4 py-3.5 rounded-r-2xl border-l border-white/5 transition-all ${previewingVoice === v ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 hover:bg-indigo-600/20 text-white/20 hover:text-indigo-400'}`}>
-                    {previewingVoice === v ? (
-                      <div className="flex gap-0.5 h-3 items-center">
-                        {[1,2,3].map(i => <div key={i} className="w-0.5 bg-current h-full animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <p className="text-[8px] text-white/20 uppercase tracking-widest px-2 font-black">Texture</p>
+                {VOICE_OPTIONS.map(v => (
+                  <div key={v} className="flex items-center gap-1 group/item">
+                    <button onClick={(e) => { e.stopPropagation(); onVoiceChange?.(v); }} className={`flex-1 flex items-center justify-between px-5 py-3.5 rounded-l-2xl transition-all duration-400 group/btn ${selectedVoice === v ? 'bg-indigo-600/40 ring-1 ring-indigo-500/50 text-white shadow-xl shadow-indigo-500/10' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${selectedVoice === v ? 'bg-indigo-400 scale-125 shadow-[0_0_8px_#818cf8]' : 'bg-white/10 scale-100 group-hover/btn:bg-white/30'}`}></div>
+                        <span className={`text-sm tracking-wide transition-all ${selectedVoice === v ? 'font-black' : 'font-light'}`}>{v}</span>
                       </div>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
-                    )}
-                  </button>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); playPreview(v); }} className={`px-4 py-3.5 rounded-r-2xl border-l border-white/5 transition-all ${previewingVoice === v ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 hover:bg-indigo-600/20 text-white/20 hover:text-indigo-400'}`}>
+                      {previewingVoice === v ? (
+                        <div className="flex gap-0.5 h-3 items-center">
+                          {[1,2,3].map(i => <div key={i} className="w-0.5 bg-current h-full animate-bounce" style={{animationDelay: `${i*0.1}s`}}></div>)}
+                        </div>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2 border-t border-white/5 pt-4">
+                <p className="text-[8px] text-white/20 uppercase tracking-widest px-2 font-black">Speaking Pace</p>
+                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+                  {PACE_OPTIONS.map(p => (
+                    <button
+                      key={p}
+                      onClick={(e) => { e.stopPropagation(); onPaceChange?.(p); }}
+                      className={`flex-1 py-2 text-[10px] uppercase tracking-widest rounded-xl transition-all ${speakingPace === p ? 'bg-indigo-500 text-white shadow-lg' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         )}

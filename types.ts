@@ -11,6 +11,8 @@ export type MicroExpression = 'smile' | 'concern' | 'surprise' | 'fatigue' | 'fo
 
 export type AdhiVoice = 'Zephyr' | 'Kore' | 'Puck' | 'Charon' | 'Fenrir';
 
+export type SpeakingPace = 'slow' | 'normal' | 'fast';
+
 export interface GoalStep {
   text: string;
   completed: boolean;
@@ -58,4 +60,5 @@ export interface AdhiState {
   isTyping: boolean;
   activeView: 'chat' | 'growth' | 'vault';
   selectedVoice: AdhiVoice;
+  speakingPace: SpeakingPace;
 }

@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ADHI_SYSTEM_PROMPT } from "../constants";
-import { AdhiMood, Goal, Memory, FileData, AdhiVoice, MessageSource } from "../types";
+import { AdhiMood, Goal, Memory, FileData, AdhiVoice, MessageSource, SpeakingPace } from "../types";
 
 export interface AdhiResponse {
   mood: AdhiMood;
@@ -109,17 +109,24 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
   }
 };
 
-export const getAdhiSpeech = async (text: string, voiceName: AdhiVoice = 'Kore'): Promise<string | undefined> => {
+export const getAdhiSpeech = async (
+  text: string, 
+  voiceName: AdhiVoice = 'Kore',
+  pace: SpeakingPace = 'normal'
+): Promise<string | undefined> => {
   try {
-    // FIX: Always use a named parameter for GoogleGenAI initialization.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     // Remove italicized actions for speech
     const cleanText = text.replace(/\*[^*]+\*/g, '').trim();
     if (!cleanText) return undefined;
 
+    // Direct model-driven pace instruction
+    const paceInstruction = pace === 'slow' ? 'Say very slowly' : pace === 'fast' ? 'Say quickly' : 'Say at a natural pace';
+    const promptedText = `${paceInstruction}: ${cleanText}`;
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: cleanText }] }],
+      contents: [{ parts: [{ text: promptedText }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
