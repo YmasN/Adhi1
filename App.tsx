@@ -162,6 +162,16 @@ const App: React.FC = () => {
     },
   };
 
+  const searchWebTool: FunctionDeclaration = {
+    name: 'searchWeb',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Search the web for accurate, up-to-date information, facts, news, or answers to user questions.',
+      properties: { query: { type: Type.STRING, description: 'The search query to look up.' } },
+      required: ['query'],
+    },
+  };
+
   const vaultCategories = useMemo(() => {
     const cats = new Set(memories.map(m => m.category));
     return ['All', ...Array.from(cats)].filter(Boolean);
@@ -286,11 +296,17 @@ const App: React.FC = () => {
       analyser.connect(audioCtxOut.destination);
       analyserRef.current = analyser;
 
+      const recentHistory = messages.slice(-5).map(m => `${m.role === 'user' ? 'User' : 'Adhi'}: ${m.text}`).join('\n');
       const contextPrompt = `
 Current Context:
 User Name: ${userName || 'Unknown'}
 User Goals: ${goals.map(g => `${g.title} (${g.progress}% done)`).join(', ') || 'None yet'}
 Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
+
+Recent Conversation History:
+${recentHistory}
+
+IMPORTANT: Do not repeat greetings or information already stated in the Recent Conversation History.
 `;
 
       const sessionPromise = ai.live.connect({
@@ -397,6 +413,23 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
                   sessionPromise.then(s => s.sendToolResponse({
                     functionResponses: [{ id: fc.id, name: fc.name, response: { result: "ok" } }]
                   })).catch(() => {});
+                } else if (fc.name === 'searchWeb') {
+                  const query = fc.args.query as string;
+                  // Execute a background search using the text model
+                  const searchAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                  searchAi.models.generateContent({
+                    model: 'gemini-3-flash-preview',
+                    contents: `Search the web for: ${query}. Provide a concise, factual summary of the answer.`,
+                    config: { tools: [{ googleSearch: {} }] }
+                  }).then(res => {
+                    sessionPromise.then(s => s.sendToolResponse({
+                      functionResponses: [{ id: fc.id, name: fc.name, response: { result: res.text || "No results found." } }]
+                    })).catch(() => {});
+                  }).catch(err => {
+                    sessionPromise.then(s => s.sendToolResponse({
+                      functionResponses: [{ id: fc.id, name: fc.name, response: { error: "Search failed." } }]
+                    })).catch(() => {});
+                  });
                 }
               }
             }
@@ -412,7 +445,7 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
           systemInstruction: ADHI_SYSTEM_PROMPT + "\n\n" + contextPrompt,
           responseModalities: [Modality.AUDIO],
           tools: [
-            { functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool] }
+            { functionDeclarations: [setCameraStateTool, setAdhiMoodTool, setMicroExpressionTool, searchWebTool] }
           ],
           speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: state.selectedVoice } }
