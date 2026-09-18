@@ -73,7 +73,7 @@ Key Memories: ${memories.map(m => m.text).slice(-5).join('; ') || 'None yet'}
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', 
+      model: 'gemini-3.8-flash', 
       contents,
       config: {
         systemInstruction: ADHI_SYSTEM_PROMPT + "\n\n" + contextPrompt,
@@ -149,7 +149,7 @@ export const getAdhiSpeech = async (
     const promptedText = `${paceInstruction}: ${cleanText}`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-3.8-flash",
       contents: [{ parts: [{ text: promptedText }] }],
       config: {
         responseModalities: [Modality.AUDIO],
